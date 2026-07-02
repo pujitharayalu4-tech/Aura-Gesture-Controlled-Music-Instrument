@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Aura — Gesture Instrument</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050710;
+    --panel:rgba(16,20,34,0.72);
+    --line:rgba(232,230,240,0.12);
+    --ink:#e8e6f0;
+    --ink-dim:#9a97ad;
+    --violet:#8b5cf6;
+    --cyan:#22d3ee;
+    --magenta:#ec4899;
+    --amber:#f59e0b;
+    --emerald:#10b981;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    width:100%; height:100%; overflow:hidden;
+    background:var(--bg); color:var(--ink);
+    font-family:'Space Grotesk', sans-serif;
+  }
+  #bg-canvas{ position:fixed; inset:0; display:block; z-index:0; }
+
+  .hud{ position:fixed; inset:0; z-index:2; pointer-events:none; }
+  .hud > *{ pointer-events:auto; }
+
+  header{
+    position:absolute; top:28px; left:32px; right:32px;
+    display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand .mark{
+    font-size:12px; letter-spacing:0.28em; text-transform:uppercase;
+    color:var(--ink-dim); font-family:'JetBrains Mono', monospace;
+  }
+  .brand h1{
+    font-size:28px; font-weight:600; letter-spacing:-0.01em;
+    background:linear-gradient(90deg, var(--violet), var(--cyan));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  #status{
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--ink-dim);
+    text-align:right; letter-spacing:0.02em;
+  }
+  #status .dot{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; background:#555; }
+  #status .dot.live{ background:var(--emerald); box-shadow:0 0 8px var(--emerald); }
+
+  .legend{
+    position:absolute; top:110px; left:32px;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px 18px; backdrop-filter:blur(14px);
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--ink-dim);
+    width:200px;
+  }
+  .legend .row{ display:flex; justify-content:space-between; padding:5px 0; }
+  .legend .row b{ color:var(--ink); font-weight:500; }
+  .legend .title{
+    font-family:'Space Grotesk', sans-serif; font-size:11px; text-transform:uppercase;
+    letter-spacing:0.16em; color:var(--ink-dim); margin-bottom:10px;
+  }
+  .legend .sub{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); }
+
+  .camwrap{
+    position:absolute; bottom:28px; left:32px;
+    width:260px; height:195px; border-radius:14px; overflow:hidden;
+    border:1px solid var(--line); background:#000;
+    box-shadow:0 12px 40px rgba(0,0,0,0.5);
+  }
+  #video{ display:none; }
+  #overlay{ width:100%; height:100%; transform:scaleX(-1); display:block; }
+
+  .noteplate{
+    position:absolute; bottom:28px; right:32px;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px 22px; backdrop-filter:blur(14px); text-align:right;
+    min-width:190px;
+  }
+  .noteplate .label{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.16em;
+    text-transform:uppercase; color:var(--ink-dim); margin-bottom:2px;
+  }
+  .noteplate .hand-row{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:6px; }
+  .noteplate .hand-tag{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--ink-dim); }
+  .note-val{ font-size:24px; font-weight:700; transition:color 0.25s ease; }
+
+  #gate{
+    position:fixed; inset:0; z-index:10;
+    background:radial-gradient(ellipse at 50% 40%, #141a2e 0%, #05070d 70%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:22px; text-align:center; padding:24px;
+  }
+  #gate h2{ font-size:34px; font-weight:600; }
+  #gate p{ color:var(--ink-dim); max-width:460px; font-size:14px; line-height:1.6; }
+  #enter{
+    font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:15px;
+    padding:14px 34px; border-radius:999px; border:none; cursor:pointer;
+    background:linear-gradient(90deg, var(--violet), var(--cyan)); color:#08090f;
+    letter-spacing:0.01em;
+  }
+  #enter:hover{ filter:brightness(1.08); }
+  #err{ color:var(--magenta); font-family:'JetBrains Mono', monospace; font-size:12px; max-width:420px; }
+  .hidden{ display:none !important; }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div id="gate">
+  <span class="mark" style="font-family:'JetBrains Mono',monospace; letter-spacing:.3em; color:var(--ink-dim); font-size:12px; text-transform:uppercase;">Aura</span>
+  <h2>Play music with both hands</h2>
+  <p>Right hand plays the melody, left hand plays the bass line. Pinch either hand to bend the tone. Needs camera and audio access.</p>
+  <button id="enter">Enter the aura</button>
+  <div id="err"></div>
+</div>
+
+<div class="hud hidden" id="hud">
+  <header>
+    <div class="brand">
+      <span class="mark">Gesture Instrument</span>
+      <h1>Aura</h1>
+    </div>
+    <div id="status"><span class="dot"></span>tracking idle</div>
+  </header>
+
+  <div class="legend">
+    <div class="title">Right hand — melody</div>
+    <div class="row"><span>1 finger</span><b>C4</b></div>
+    <div class="row"><span>2 fingers</span><b>D4</b></div>
+    <div class="row"><span>3 fingers</span><b>E4</b></div>
+    <div class="row"><span>4 fingers</span><b>G4</b></div>
+    <div class="row"><span>open palm</span><b>C maj</b></div>
+    <div class="sub title">Left hand — bass</div>
+    <div class="row"><span>1 finger</span><b>C3</b></div>
+    <div class="row"><span>2 fingers</span><b>D3</b></div>
+    <div class="row"><span>3 fingers</span><b>E3</b></div>
+    <div class="row"><span>4 fingers</span><b>G3</b></div>
+    <div class="row"><span>open palm</span><b>C3 pad</b></div>
+    <div class="row"><span>hold pinch</span><b>tone bend</b></div>
+    <div class="row"><span>quick pinch snap</span><b>✨ sparkle</b></div>
+  </div>
+
+  <div class="camwrap">
+    <video id="video" playsinline></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="noteplate">
+    <div class="label">Now playing</div>
+    <div class="hand-row"><span class="hand-tag" style="color:var(--cyan)">RIGHT</span><span class="note-val" id="noteR">—</span></div>
+    <div class="hand-row"><span class="hand-tag" style="color:var(--magenta)">LEFT</span><span class="note-val" id="noteL">—</span></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+/* ---------- Three.js reactive background ---------- */
+const bgCanvas = document.getElementById('bg-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas: bgCanvas, antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x050710, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050710, 0.045);
+const camera3d = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera3d.position.z = 9;
+
+// main particle sphere — the "sound made visible" element
+const PARTICLE_COUNT = 3600;
+const positions = new Float32Array(PARTICLE_COUNT*3);
+const baseRadii = new Float32Array(PARTICLE_COUNT);
+for(let i=0;i<PARTICLE_COUNT;i++){
+  const r = 3.0 + Math.random()*2.6;
+  const theta = Math.random()*Math.PI*2;
+  const phi = Math.acos((Math.random()*2)-1);
+  positions[i*3]   = r*Math.sin(phi)*Math.cos(theta);
+  positions[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
+  positions[i*3+2] = r*Math.cos(phi);
+  baseRadii[i] = r;
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+const mat = new THREE.PointsMaterial({ size:0.07, color:0x8b5cf6, transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false });
+const points = new THREE.Points(geo, mat);
+scene.add(points);
+
+// glowing core sphere gives the field something to breathe around
+const coreGeo = new THREE.IcosahedronGeometry(1.1, 2);
+const coreMat = new THREE.MeshBasicMaterial({ color:0x8b5cf6, transparent:true, opacity:0.18, wireframe:true });
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// distant starfield for depth
+const starGeo = new THREE.BufferGeometry();
+const starPos = new Float32Array(1200*3);
+for(let i=0;i<1200;i++){
+  starPos[i*3]=(Math.random()-0.5)*70;
+  starPos[i*3+1]=(Math.random()-0.5)*70;
+  starPos[i*3+2]=(Math.random()-0.5)*70-15;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.PointsMaterial({ size:0.045, color:0x9a97ad, transparent:true, opacity:0.55 });
+scene.add(new THREE.Points(starGeo, starMat));
+
+/* ---------- Sparkle bursts (tap effect) ---------- */
+const sparkleBursts = [];
+
+function spawnSparkleBurst(colorHex){
+  const count = 46;
+  const positions = new Float32Array(count*3);
+  const velocities = new Float32Array(count*3);
+
+  const originR = 1.4 + Math.random()*1.6;
+  const theta = Math.random()*Math.PI*2;
+  const phi = Math.acos((Math.random()*2)-1);
+  const ox = originR*Math.sin(phi)*Math.cos(theta);
+  const oy = originR*Math.sin(phi)*Math.sin(theta);
+  const oz = originR*Math.cos(phi);
+
+  for(let i=0;i<count;i++){
+    positions[i*3]=ox; positions[i*3+1]=oy; positions[i*3+2]=oz;
+    const vt = Math.random()*Math.PI*2;
+    const vp = Math.acos((Math.random()*2)-1);
+    const speed = 0.015 + Math.random()*0.05;
+    velocities[i*3]   = speed*Math.sin(vp)*Math.cos(vt);
+    velocities[i*3+1] = speed*Math.sin(vp)*Math.sin(vt);
+    velocities[i*3+2] = speed*Math.cos(vp);
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  const m = new THREE.PointsMaterial({
+    size:0.1, color:colorHex, transparent:true, opacity:1,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const pts = new THREE.Points(g, m);
+  scene.add(pts);
+  sparkleBursts.push({ points:pts, velocities, geometry:g, material:m, life:1.0, seed:Math.random()*10 });
+}
+
+function updateSparkleBursts(){
+  for(let i=sparkleBursts.length-1;i>=0;i--){
+    const b = sparkleBursts[i];
+    b.life -= 0.018;
+    const posAttr = b.geometry.attributes.position;
+    for(let j=0;j<posAttr.count;j++){
+      posAttr.array[j*3]   += b.velocities[j*3];
+      posAttr.array[j*3+1] += b.velocities[j*3+1] + 0.0009; // gentle upward drift, like fairy dust
+      posAttr.array[j*3+2] += b.velocities[j*3+2];
+    }
+    posAttr.needsUpdate = true;
+    const twinkle = 0.75 + 0.25*Math.sin(Date.now()*0.02 + b.seed);
+    b.material.opacity = Math.max(0, b.life) * twinkle;
+    b.material.size = 0.1 * (0.6 + b.life*0.5);
+    if(b.life <= 0){
+      scene.remove(b.points);
+      b.geometry.dispose(); b.material.dispose();
+      sparkleBursts.splice(i,1);
+    }
+  }
+}
+
+const NOTE_COLORS = {
+  'C4':0x22d3ee,'D4':0x60d9ee,'E4':0x8b5cf6,'G4':0xa78bfa,'CMAJ':0x10b981,
+  'C3':0xec4899,'D3':0xf472b6,'E3':0xf59e0b,'G3':0xfbbf24,'C3PAD':0x10b981,
+  'REST':0x3a3f55
+};
+let pulse = 0;
+let targetColor = new THREE.Color(0x8b5cf6);
+let currentColor = new THREE.Color(0x8b5cf6);
+let bendAmount = 0;
+
+function triggerPulse(colorHex){
+  targetColor = new THREE.Color(colorHex);
+  pulse = Math.min(1.4, pulse + 0.9);
+}
+
+/* continuous audio-reactive amplitude (updated from analyser each frame) */
+let liveAmplitude = 0;
+
+function animateBG(){
+  requestAnimationFrame(animateBG);
+  points.rotation.y += 0.0013;
+  points.rotation.x += 0.0004;
+  core.rotation.y -= 0.002;
+  core.rotation.x += 0.0015;
+
+  pulse *= 0.93;
+  currentColor.lerp(targetColor, 0.07);
+  mat.color.copy(currentColor);
+  coreMat.color.copy(currentColor);
+
+  const breathe = liveAmplitude * 0.6;
+  mat.size = 0.07 + pulse*0.12 + breathe*0.05;
+  mat.opacity = 0.75 + Math.min(0.25, breathe);
+  coreMat.opacity = 0.15 + pulse*0.25 + breathe*0.15;
+
+  const posAttr = geo.attributes.position;
+  for(let i=0;i<PARTICLE_COUNT;i++){
+    const scale = 1 + pulse*0.4 + bendAmount*0.3 + breathe*0.15;
+    const r = baseRadii[i]*scale;
+    const bx = positions[i*3]/baseRadii[i], by = positions[i*3+1]/baseRadii[i], bz = positions[i*3+2]/baseRadii[i];
+    posAttr.array[i*3]=bx*r; posAttr.array[i*3+1]=by*r; posAttr.array[i*3+2]=bz*r;
+  }
+  posAttr.needsUpdate = true;
+
+  camera3d.position.x = Math.sin(Date.now()*0.00008)*0.6;
+  camera3d.lookAt(0,0,0);
+
+  updateSparkleBursts();
+
+  renderer.render(scene, camera3d);
+}
+animateBG();
+
+window.addEventListener('resize', ()=>{
+  camera3d.aspect = window.innerWidth/window.innerHeight;
+  camera3d.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ---------- Audio (Tone.js) ---------- */
+let melodySynth, bassSynth, tapSynth, filter, reverb, analyser;
+
+function setupAudio(){
+  analyser = new Tone.Analyser('waveform', 256);
+  filter = new Tone.Filter(1800, 'lowpass');
+  reverb = new Tone.Reverb({ decay:3, wet:0.28 });
+
+  filter.connect(reverb);
+  reverb.connect(analyser);
+  analyser.toDestination();
+
+  melodySynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{ type:'triangle' },
+    envelope:{ attack:0.02, decay:0.15, sustain:0.35, release:0.9 }
+  }).connect(filter);
+  melodySynth.volume.value = -6;
+
+  bassSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator:{ type:'sine' },
+    envelope:{ attack:0.04, decay:0.2, sustain:0.5, release:1.2 }
+  }).connect(filter);
+  bassSynth.volume.value = -8;
+
+  // Bright, bell-like chime for the tap/sparkle gesture
+  tapSynth = new Tone.MetalSynth({
+    harmonicity:6.1,
+    modulationIndex:22,
+    resonance:3500,
+    octaves:1.2,
+    envelope:{ attack:0.001, decay:0.5, release:0.3 }
+  }).connect(filter);
+  tapSynth.volume.value = -14;
+}
+
+const SPARKLE_SCALE = ['C6','D6','E6','G6','A6'];
+
+function playTap(){
+  const note = SPARKLE_SCALE[Math.floor(Math.random()*SPARKLE_SCALE.length)];
+  tapSynth.triggerAttackRelease(note, '16n');
+  spawnSparkleBurst(0xfff3c4);
+  spawnSparkleBurst(0xffffff);
+}
+
+function readAmplitude(){
+  if(!analyser) return 0;
+  const values = analyser.getValue();
+  let sum = 0;
+  for(let i=0;i<values.length;i++) sum += values[i]*values[i];
+  return Math.sqrt(sum/values.length);
+}
+setInterval(()=>{ liveAmplitude = readAmplitude()*4; }, 50);
+
+const RIGHT_GESTURES = {
+  1:{ notes:['C4'], label:'C4', color:NOTE_COLORS.C4 },
+  2:{ notes:['D4'], label:'D4', color:NOTE_COLORS.D4 },
+  3:{ notes:['E4'], label:'E4', color:NOTE_COLORS.E4 },
+  4:{ notes:['G4'], label:'G4', color:NOTE_COLORS.G4 },
+  5:{ notes:['C4','E4','G4'], label:'C maj', color:NOTE_COLORS.CMAJ },
+  0:{ notes:[], label:'—', color:NOTE_COLORS.REST }
+};
+const LEFT_GESTURES = {
+  1:{ notes:['C3'], label:'C3', color:NOTE_COLORS.C3 },
+  2:{ notes:['D3'], label:'D3', color:NOTE_COLORS.D3 },
+  3:{ notes:['E3'], label:'E3', color:NOTE_COLORS.E3 },
+  4:{ notes:['G3'], label:'G3', color:NOTE_COLORS.G3 },
+  5:{ notes:['C3','E3','G3'], label:'C3 pad', color:NOTE_COLORS.C3PAD },
+  0:{ notes:[], label:'—', color:NOTE_COLORS.REST }
+};
+
+const handState = {
+  right:{ lastCount:-1, stable:0, tapArmed:false },
+  left:{ lastCount:-1, stable:0, tapArmed:false }
+};
+const STABLE_NEEDED = 4;
+
+function playGesture(side, count){
+  const table = side === 'right' ? RIGHT_GESTURES : LEFT_GESTURES;
+  const synth = side === 'right' ? melodySynth : bassSynth;
+  const g = table[count];
+  const elId = side === 'right' ? 'noteR' : 'noteL';
+  const el = document.getElementById(elId);
+  el.textContent = g.label;
+  el.style.color = '#' + g.color.toString(16).padStart(6,'0');
+  if(g.notes.length){
+    synth.triggerAttackRelease(g.notes, '8n');
+    triggerPulse(g.color);
+  }
+}
+
+function updateBend(pinchNorm){
+  bendAmount = pinchNorm;
+  if(filter) filter.frequency.value = 400 + pinchNorm*4000;
+  if(reverb) reverb.wet.value = 0.15 + pinchNorm*0.4;
+}
+
+/* ---------- Hand tracking (MediaPipe), up to 2 hands ---------- */
+const videoEl = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+function countFingers(lm){
+  let count = 0;
+  if(dist(lm[4], lm[17]) > dist(lm[3], lm[17])) count++;
+  const pairs = [[8,6],[12,10],[16,14],[20,18]];
+  for(const [tip,pip] of pairs){
+    if(lm[tip].y < lm[pip].y) count++;
+  }
+  return count;
+}
+
+const HAND_COLORS = { right:'rgba(34,211,238,0.9)', left:'rgba(236,72,153,0.9)' };
+
+function drawSkeleton(lm, side){
+  octx.strokeStyle = HAND_COLORS[side];
+  octx.fillStyle = HAND_COLORS[side];
+  octx.lineWidth = 2;
+  const CONNECTIONS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+  for(const [a,b] of CONNECTIONS){
+    octx.beginPath();
+    octx.moveTo(lm[a].x*overlay.width, lm[a].y*overlay.height);
+    octx.lineTo(lm[b].x*overlay.width, lm[b].y*overlay.height);
+    octx.stroke();
+  }
+  for(const p of lm){
+    octx.beginPath();
+    octx.arc(p.x*overlay.width, p.y*overlay.height, 2.6, 0, Math.PI*2);
+    octx.fill();
+  }
+}
+
+function processHand(lm, side){
+  const count = countFingers(lm);
+  const pinch = dist(lm[4], lm[8]);
+  const pinchNorm = Math.max(0, Math.min(1, (pinch-0.03)/0.22));
+  updateBend(pinchNorm);
+
+  const state = handState[side];
+
+  // Tap gesture: a fast pinch snap (fingers apart -> together).
+  // Must re-open past 0.55 before it can fire again, so it fires once per snap, not every frame.
+  if(pinchNorm > 0.55) state.tapArmed = true;
+  if(state.tapArmed && pinchNorm < 0.12){
+    playTap();
+    state.tapArmed = false;
+  }
+
+  if(count === state.lastCount){
+    state.stable++;
+  } else {
+    state.lastCount = count;
+    state.stable = 0;
+  }
+  if(state.stable === STABLE_NEEDED){
+    playGesture(side, count);
+  }
+}
+
+function onResults(results){
+  overlay.width = 260; overlay.height = 195;
+  octx.clearRect(0,0,overlay.width,overlay.height);
+
+  if(!results.multiHandLandmarks || results.multiHandLandmarks.length === 0){
+    setStatus(false);
+    handState.right.stable = 0;
+    handState.left.stable = 0;
+    return;
+  }
+  setStatus(true, results.multiHandLandmarks.length);
+
+  results.multiHandLandmarks.forEach((lm, idx) => {
+    // MediaPipe assumes a mirrored (selfie) input image when labeling Left/Right.
+    // We send the raw, unmirrored camera frame, so the label is backwards —
+    // swap it here to match the hand the person is actually holding up.
+    const rawLabel = results.multiHandedness?.[idx]?.label || 'Right';
+    const side = rawLabel === 'Left' ? 'right' : 'left';
+    drawSkeleton(lm, side);
+    processHand(lm, side);
+  });
+}
+
+function setStatus(live, count){
+  const s = document.getElementById('status');
+  if(!live){
+    s.innerHTML = '<span class="dot"></span>show your hand(s) to the camera';
+  } else {
+    s.innerHTML = `<span class="dot live"></span>tracking ${count} hand${count>1?'s':''}`;
+  }
+}
+
+/* ---------- Boot sequence ---------- */
+document.getElementById('enter').addEventListener('click', async () => {
+  const errEl = document.getElementById('err');
+  errEl.textContent = '';
+  try{
+    await Tone.start();
+    setupAudio();
+
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.7, minTrackingConfidence:0.6 });
+    hands.onResults(onResults);
+
+    const mpCamera = new Camera(videoEl, {
+      onFrame: async () => { await hands.send({ image: videoEl }); },
+      width:640, height:480
+    });
+    mpCamera.start();
+
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+  }catch(e){
+    console.error(e);
+    errEl.textContent = 'Could not start camera/audio: ' + e.message + '. Check permissions and try again.';
+  }
+});
+</script>
+</body>
+</html>
