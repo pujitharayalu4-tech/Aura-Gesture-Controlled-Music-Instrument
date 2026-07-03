@@ -1,6 +1,7 @@
 opencv-python-headless
 streamlit
-mediapipe
+mediapipe==0.10.9
+protobuf<4
 scikit-learn
 pandas
 joblib
