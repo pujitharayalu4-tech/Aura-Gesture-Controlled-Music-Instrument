@@ -1,4 +1,5 @@
 opencv-python-headless
+libgl1
 streamlit
 mediapipe
 scikit-learn
