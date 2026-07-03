@@ -1,7 +1,0 @@
-opencv-python
-streamlit
-mediapipe
-scikit-learn
-pandas
-joblib
-numpy
