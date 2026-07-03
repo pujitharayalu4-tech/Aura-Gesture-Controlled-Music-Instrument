@@ -65,7 +65,7 @@ Make sure your hand is clearly visible to the camera.
 # --- Camera Input and Image Processing ---
 # Use st.camera_input for a simple camera feed integration.
 # It returns a file-like object containing the image bytes when feed is available.
-camera_feed = st.camera_input("Your webcam feed", placeholder="Waiting for camera access...")
+camera_feed = st.camera_input("Your webcam feed")
 
 # Placeholder for displaying the annotated image
 annotated_image_placeholder = st.empty()
