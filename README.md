@@ -70,25 +70,6 @@ without needing to learn a traditional instrument first.
 
 ---
 
-## 🚀 Running it locally
-
-Hand tracking and camera access require a local server — opening the HTML
-file directly (`file://`) will not work in most browsers.
-
-```bash
-# from the folder containing gesture-music-vr.html
-python3 -m http.server 8000
-```
-
-Then open **http://localhost:8000/gesture-music-vr.html** in Chrome.
-
-Click **Enter the aura**, allow camera and microphone/audio permissions, and
-show one or both hands to the camera.
-
-> If the camera doesn't activate, check the camera icon in your browser's
-> address bar and make sure this page is set to **Allow**, then reload.
-
----
 
 ## 🤖 ML extension (in progress)
 
